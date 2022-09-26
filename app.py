@@ -1,28 +1,54 @@
 #!/usr/bin/python
-#
-# Copyright 2020 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 import os
+import json
 
-from flask import Flask
+from flask import Flask, request
 
 app = Flask(__name__)
 
+# 詳細はhttps://cloud.google.com/logging/docs/setup/python
+# Cloud Logging client Libraryをインストール
+import google.cloud.logging
+
+# クライアントをインスタンス化
+client = google.cloud.logging.Client()
+logger = client.logger('Cloud Run Logger')
+
+# Pythonのロギングモジュールと統合
+client.setup_logging()
+
+PROJECT = "beam-logging-monitoring-demo"
+
 @app.route('/')
 def hello_world():
-    target = os.environ.get('TARGET', 'World')
-    return 'Hello {}!\n'.format(target)
+    logger.log_text('Hello World')
+    print("これは標準出力によるprintです。")
+    return 'Hello World!\n'
+
+@app.route('/error')
+def hello_world():
+    logger.error('エラーが発生しました')
+
+@app.route('/warning')
+def warning():
+    logger.warning('警告')
+    
+@app.route('/trace')
+def trace():
+    """
+    Cloud Traceとの連携
+    """
+    #デフォルトでCloud Runに対するリクエストに含まれている
+    trace_header = request.headers.get("X-Cloud-Trace-Context")
+    # traceフィールドは、projects/[PROJECT_ID]/traces/[TRACE_ID]
+    trace = trace_header.split("/")
+    log_entry = {
+        "logging.googleapis.com/trace": f"projects/{PROJECT}/traces/{trace[0]}",
+        "message" : "Cloud Traceとの連携",
+        "severity":"NOTICE"
+    }
+
+    print(json.dump(log_entry))
 
 if __name__ == "__main__":
     app.run(debug=True,host='0.0.0.0',port=int(os.environ.get('PORT', 8080)))
